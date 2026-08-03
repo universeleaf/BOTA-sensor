@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local captures and logs
+*.csv
+*.log
+
+# Downloaded installers and upstream examples
+npcap-*.exe
+official_bota_example/
+
+# Editor and OS metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
