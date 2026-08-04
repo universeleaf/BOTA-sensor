@@ -105,3 +105,42 @@ Gen 0 EtherCAT 接口不支持硬件 tare，BOTA 驱动会改用软件零偏。�
 ```
 
 输出中的 `Fx/Fy/Fz` 单位是 N，`Tx/Ty/Tz` 单位是 Nm。`invalid=1` 或 `over=1` 时不要把该帧用于测量或控制。
+
+## 将 Z 向力输出到串口
+
+如果需要把 Z 方向的力发送给另一个控制器或串口设备，先在 Windows 中确认目标串口号：
+
+```powershell
+[System.IO.Ports.SerialPort]::GetPortNames() | Sort-Object
+```
+
+然后指定串口启动程序。下面示例使用 `COM7` 和 `115200` 波特率：
+
+```powershell
+.\.venv\Scripts\python.exe .\read_bota.py --serial-port COM7 --serial-baud 115200
+```
+
+串口采用 `8-N-1`，每个采样周期发送一行 ASCII 文本，格式为：
+
+```text
+12.345678\r\n
+```
+
+这个数值是 `Fz`，单位为 `N`；发送频率跟随 `--rate`，默认 10 Hz，例如 `--rate 100` 就发送 100 行/秒。`invalid` 或 `overrange` 帧会发送 `nan`，避免下游使用无效力值。Fx/Fy、三轴力矩、温度和状态仍只显示在终端，并可通过 `--csv` 保存。
+
+如果不指定 `--serial-port`，程序不会打开任何串口，行为与普通读取模式相同。
+
+### 跨电脑和设备使用
+
+程序不固定 COM 号，因此可以在其他 Windows 电脑上复用。每台电脑只需：
+
+1. 插入连接下游设备的 USB-串口适配器。
+2. 在设备管理器或下面的命令中确认新出现的 `COMx`：
+
+```powershell
+[System.IO.Ports.SerialPort]::GetPortNames() | Sort-Object
+```
+
+3. 将命令中的 `COMx` 换成该端口后启动程序。USB-串口适配器更换后，COM 号也可能改变。
+
+电脑和下游设备必须匹配串口电气标准：RS-232、RS-485 和 TTL 不是同一种信号，不能直接混接。使用对应的转换器，并按照接收设备手册连接 TX、RX 和 GND；RS-485 还需要按设备要求连接 A/B。当前程序发送的是单向 ASCII 数值流，不包含自定义二进制帧或校验和；如果下游设备要求特定协议，需要根据它的通信协议修改发送格式。

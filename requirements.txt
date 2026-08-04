@@ -1,1 +1,2 @@
 bota-driver
+pyserial>=3.5

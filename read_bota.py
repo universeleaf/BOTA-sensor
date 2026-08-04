@@ -75,12 +75,25 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="可选的 CSV 输出路径。",
     )
+    parser.add_argument(
+        "--serial-port",
+        metavar="COMx",
+        help="将 Z 向力（N）逐行输出到指定 Windows 串口，例如 COM7。",
+    )
+    parser.add_argument(
+        "--serial-baud",
+        type=int,
+        default=115200,
+        help="串口波特率（默认 115200；8-N-1）。",
+    )
     args = parser.parse_args()
 
     if args.rate <= 0:
         parser.error("--rate 必须大于 0")
     if args.duration < 0:
         parser.error("--duration 不能小于 0")
+    if args.serial_baud <= 0:
+        parser.error("--serial-baud 必须大于 0")
     return args
 
 
@@ -139,6 +152,49 @@ def open_csv(stack: ExitStack, path: Path | None) -> tuple[TextIO | None, Any | 
     return file_handle, writer
 
 
+def open_serial(stack: ExitStack, port: str | None, baudrate: int) -> Any | None:
+    if port is None:
+        return None
+
+    try:
+        import serial
+    except ImportError as exc:
+        raise RuntimeError(
+            "串口输出需要 pyserial，请先运行：python -m pip install pyserial"
+        ) from exc
+
+    try:
+        serial_port = serial.Serial(
+            port=port,
+            baudrate=baudrate,
+            bytesize=serial.EIGHTBITS,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+            timeout=0,
+            write_timeout=1,
+        )
+    except serial.SerialException as exc:
+        raise RuntimeError(f"无法打开串口 {port}: {exc}") from exc
+
+    stack.callback(serial_port.close)
+    print(f"串口输出: {port} @ {baudrate} baud（仅发送 Fz，单位 N）")
+    return serial_port
+
+
+def write_serial_fz(serial_port: Any | None, row: dict[str, Any]) -> None:
+    if serial_port is None:
+        return
+
+    # Invalid or overrange samples are explicitly marked unusable instead of
+    # sending a potentially unsafe force value to the downstream controller.
+    value = "nan" if row["invalid"] or row["overrange"] else f"{row['fz_N']:.6f}"
+    try:
+        serial_port.write(f"{value}\r\n".encode("ascii"))
+        serial_port.flush()
+    except Exception as exc:
+        raise RuntimeError(f"串口写入失败: {exc}") from exc
+
+
 def main() -> int:
     args = parse_args()
 
@@ -194,12 +250,14 @@ def main() -> int:
 
         with ExitStack() as stack:
             csv_file, csv_writer = open_csv(stack, args.csv)
+            serial_port = open_serial(stack, args.serial_port, args.serial_baud)
             while not stop_requested:
                 if args.duration and time.perf_counter() - started_at >= args.duration:
                     break
 
                 row = frame_to_row(driver.read_frame())
                 print_row(row)
+                write_serial_fz(serial_port, row)
                 if csv_writer is not None:
                     csv_writer.writerow(row)
                     csv_file.flush()
