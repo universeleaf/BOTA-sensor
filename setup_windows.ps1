@@ -100,30 +100,42 @@ function Install-NpcapIfNeeded {
     Write-Host "Npcap 安装和兼容模式检查通过。" -ForegroundColor Green
 }
 
+function Test-PythonExecutable {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
+        return $false
+    }
+
+    try {
+        & $Path -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 12) and sys.maxsize > 2**32 else 1)" 2>$null
+        return $LASTEXITCODE -eq 0
+    }
+    catch {
+        return $false
+    }
+}
+
 function Get-PythonExecutable {
     $pyLauncher = Get-Command "py.exe" -ErrorAction SilentlyContinue
     if ($null -ne $pyLauncher) {
-        try {
-            $candidate = (& $pyLauncher.Source -3 -c "import sys; print(sys.executable)" 2>$null | Select-Object -Last 1).ToString().Trim()
-            if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $candidate)) {
-                return (Resolve-Path -LiteralPath $candidate).Path
+        foreach ($pyVersion in @("-3.12", "-3")) {
+            try {
+                $candidate = (& $pyLauncher.Source $pyVersion -c "import sys; print(sys.executable)" 2>$null | Select-Object -Last 1).ToString().Trim()
+                if (Test-PythonExecutable -Path $candidate) {
+                    return (Resolve-Path -LiteralPath $candidate).Path
+                }
             }
-        }
-        catch {
-            # Continue to other Python discovery methods.
+            catch {
+                # Continue to other Python discovery methods.
+            }
         }
     }
 
     $pythonCommand = Get-Command "python.exe" -ErrorAction SilentlyContinue
     if ($null -ne $pythonCommand -and $pythonCommand.Source -notmatch "WindowsApps") {
-        try {
-            & $pythonCommand.Source -c "import sys; raise SystemExit(0 if sys.version_info.major == 3 else 1)" 2>$null
-            if ($LASTEXITCODE -eq 0) {
-                return $pythonCommand.Source
-            }
-        }
-        catch {
-            # Continue to known install locations.
+        if (Test-PythonExecutable -Path $pythonCommand.Source) {
+            return $pythonCommand.Source
         }
     }
 
@@ -137,7 +149,8 @@ function Get-PythonExecutable {
             -Path $root `
             -Directory `
             -Filter "Python*" `
-            -ErrorAction SilentlyContinue
+            -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending
         foreach ($directory in $pythonDirectories) {
             $candidate = Get-ChildItem `
                 -Path $directory.FullName `
@@ -145,7 +158,7 @@ function Get-PythonExecutable {
                 -Recurse `
                 -ErrorAction SilentlyContinue |
                 Select-Object -First 1
-            if ($null -ne $candidate) {
+            if ($null -ne $candidate -and (Test-PythonExecutable -Path $candidate.FullName)) {
                 return $candidate.FullName
             }
         }
@@ -160,7 +173,7 @@ function Install-PythonIfNeeded {
         return $python
     }
 
-    Write-Step "安装 Python 3.12"
+    Write-Step "安装 Python 3.12 x64"
     $winget = Get-Command "winget.exe" -ErrorAction SilentlyContinue
     if ($null -eq $winget) {
         throw "未找到 Python 或 winget。请从 https://www.python.org/downloads/windows/ 安装 Python 后重试。"
@@ -278,6 +291,16 @@ function Install-PythonDependencies {
     param([string]$PythonExecutable)
 
     Write-Step "创建 Python 环境并安装依赖"
+    if ((Test-Path -LiteralPath $VenvPython) -and -not (Test-PythonExecutable -Path $VenvPython)) {
+        Write-Warning "现有 .venv 不是 64 位 Python 3.12+，将重建自动生成的虚拟环境。"
+        $resolvedVenv = [System.IO.Path]::GetFullPath($VenvPath).TrimEnd("\")
+        $expectedVenv = [System.IO.Path]::GetFullPath((Join-Path $ProjectRoot ".venv")).TrimEnd("\")
+        if ($resolvedVenv -ne $expectedVenv) {
+            throw "拒绝删除非项目目录下的虚拟环境：$resolvedVenv"
+        }
+        Remove-Item -LiteralPath $resolvedVenv -Recurse -Force
+    }
+
     if (-not (Test-Path -LiteralPath $VenvPython)) {
         & $PythonExecutable -m venv $VenvPath
         if ($LASTEXITCODE -ne 0) {
@@ -285,9 +308,23 @@ function Install-PythonDependencies {
         }
     }
 
-    & $VenvPython -m pip install --disable-pip-version-check -r $RequirementsPath
-    if ($LASTEXITCODE -ne 0) {
-        throw "安装 Python 依赖失败，退出代码：$LASTEXITCODE"
+    Write-Host "虚拟环境 Python：$(& $VenvPython -c 'import sys; print(sys.executable)' | Select-Object -Last 1)"
+    $pipArguments = @(
+        "-m", "pip", "install", "--disable-pip-version-check",
+        "-r", $RequirementsPath
+    )
+    & $VenvPython @pipArguments
+    $pipExitCode = $LASTEXITCODE
+    if ($pipExitCode -ne 0) {
+        Write-Warning "当前 pip 软件源没有返回可用的 bota-driver，正在重试官方 PyPI。"
+        $officialPipArguments = $pipArguments[0..3] + `
+            @("--index-url", "https://pypi.org/simple") + `
+            $pipArguments[4..($pipArguments.Count - 1)]
+        & $VenvPython @officialPipArguments
+        $pipExitCode = $LASTEXITCODE
+    }
+    if ($pipExitCode -ne 0) {
+        throw "安装 Python 依赖失败。请确认使用 64 位 Python 3.12+，并能访问 https://pypi.org。退出代码：$pipExitCode"
     }
 
     & $VenvPython -c "import bota_driver, serial; print('Python dependencies: OK')"

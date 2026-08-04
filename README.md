@@ -34,7 +34,7 @@ Npcap 必须安装，并启用 `WinPcap API-compatible Mode`。建议从 [Npcap 
 2. 强制启用 `WinPcap API-compatible Mode`，并允许普通用户进程访问驱动。
 3. 自动查找物理有线网卡；只有一块时直接使用，多块时显示列表供选择。
 4. 将该电脑的网卡 GUID 自动写入 `bota_config.json`。
-5. 检查 Python；没有 Python 时通过 `winget` 安装 Python 3.12。
+5. 检查 64 位 Python 3.12 或更高版本；只有旧版/32 位 Python 时，通过 `winget` 安装 Python 3.12 x64。
 6. 创建 `.venv`、安装已验证版本的 `bota-driver` 和 `pyserial`，最后执行导入检查。
 
 Npcap 免费版不支持完全静默安装，因此新电脑第一次运行时仍会弹出 Npcap 官方窗口和 Windows UAC。选项已经由脚本设置好，只需点击一次 `Install`；安装窗口关闭后，其余步骤会继续自动执行。Npcap 是 Windows 系统驱动，不安装在本项目或 `.venv` 中，安装位置保持官方默认即可。
@@ -53,6 +53,8 @@ Npcap 免费版不支持完全静默安装，因此新电脑第一次运行时�
 ```
 
 脚本可以重复运行；已满足的 Npcap、Python 和虚拟环境步骤会复用，只更新依赖和当前选择的网卡配置。
+
+如果出现 `No matching distribution found for bota-driver`，通常是现有 Python 低于 3.12、使用了 32 位 Python，或配置的 pip 镜像没有同步该包。最新版脚本会自动选择 Python 3.12+ x64、重建不兼容的 `.venv`，并在默认软件源失败后重试官方 PyPI。更新仓库后重新运行 `.\setup.bat` 即可。
 
 ## 更换电脑或网卡
 
