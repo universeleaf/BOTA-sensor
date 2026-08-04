@@ -18,7 +18,41 @@ EtherCAT 不是普通 TCP/IP。请严格按官方快速指南连接：
 
 Windows 的 `ipconfig /all` 随后应显示该网卡已连接；EtherCAT 不需要从 DHCP 获得 IP 地址。传感器绿色 LED 表示 EtherCAT 状态，红色 LED 表示 EtherCAT 错误。
 
-Npcap 必须安装，并启用 `WinPcap API-compatible Mode`。不要让 TwinCAT、其他 EtherCAT 主站或抓包程序同时占用这块网卡。
+Npcap 必须安装，并启用 `WinPcap API-compatible Mode`。建议从 [Npcap 官方下载页](https://npcap.com/) 获取安装程序。不要让 TwinCAT、其他 EtherCAT 主站或抓包程序同时占用这块网卡。
+
+## 新电脑一键配置（推荐）
+
+在新电脑上下载或克隆本仓库，先按连接要求接好传感器、供电板和有线网卡，然后在仓库目录运行一个命令：
+
+```powershell
+.\setup.bat
+```
+
+脚本会依次完成：
+
+1. 检查 Npcap；如果没有安装，则从 Npcap 官方地址下载 `1.88`，验证 `Nmap Software LLC` 数字签名后启动安装程序。
+2. 强制启用 `WinPcap API-compatible Mode`，并允许普通用户进程访问驱动。
+3. 自动查找物理有线网卡；只有一块时直接使用，多块时显示列表供选择。
+4. 将该电脑的网卡 GUID 自动写入 `bota_config.json`。
+5. 检查 Python；没有 Python 时通过 `winget` 安装 Python 3.12。
+6. 创建 `.venv`、安装已验证版本的 `bota-driver` 和 `pyserial`，最后执行导入检查。
+
+Npcap 免费版不支持完全静默安装，因此新电脑第一次运行时仍会弹出 Npcap 官方窗口和 Windows UAC。选项已经由脚本设置好，只需点击一次 `Install`；安装窗口关闭后，其余步骤会继续自动执行。Npcap 是 Windows 系统驱动，不安装在本项目或 `.venv` 中，安装位置保持官方默认即可。
+
+配置完成后运行：
+
+```powershell
+.\.venv\Scripts\python.exe .\read_bota.py
+```
+
+如果需要预先指定网卡 GUID，或者单位电脑已经由管理员统一安装 Npcap，可以使用：
+
+```powershell
+.\setup.bat -NetworkInterfaceGuid "648CD556-4DF0-4024-A8C5-CAE7CE99487C"
+.\setup.bat -SkipNpcap
+```
+
+脚本可以重复运行；已满足的 Npcap、Python 和虚拟环境步骤会复用，只更新依赖和当前选择的网卡配置。
 
 ## 更换电脑或网卡
 
@@ -28,7 +62,7 @@ Npcap 必须安装，并启用 `WinPcap API-compatible Mode`。不要让 TwinCAT
 "network_interface": "\\Device\\NPF_{648CD556-4DF0-4024-A8C5-CAE7CE99487C}"
 ```
 
-在新电脑上按以下步骤配置：
+推荐直接运行前一节的 `.\setup.bat`。如果自动配置不可用，也可以按以下步骤手动配置：
 
 1. 安装 Python。
 2. 安装 Npcap，并在安装界面勾选 `Install Npcap in WinPcap API-compatible Mode`。

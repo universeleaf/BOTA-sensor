@@ -1,2 +1,2 @@
-bota-driver
+bota-driver==1.1.10
 pyserial>=3.5
