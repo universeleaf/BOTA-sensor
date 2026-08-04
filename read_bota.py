@@ -56,11 +56,20 @@ def parse_args() -> argparse.Namespace:
         default=0.0,
         help="运行秒数；0 表示持续运行，直到 Ctrl+C。",
     )
-    parser.add_argument(
+    tare_group = parser.add_mutually_exclusive_group()
+    tare_group.add_argument(
         "--tare",
+        dest="tare",
         action="store_true",
-        help="启动采集前将当前六维力/力矩读数清零。",
+        help="连接后将当前六维力/力矩读数清零（默认启用）。",
     )
+    tare_group.add_argument(
+        "--no-tare",
+        dest="tare",
+        action="store_false",
+        help="跳过连接后的自动清零。",
+    )
+    parser.set_defaults(tare=True)
     parser.add_argument(
         "--csv",
         type=Path,
@@ -169,9 +178,10 @@ def main() -> int:
         configured = True
 
         if args.tare:
-            print("正在执行清零，请保持传感器无外载荷...")
+            print("正在自动清零，请保持传感器处于零点参考状态...")
             if not driver.tare():
                 raise RuntimeError("传感器清零失败")
+            print("清零完成。")
 
         if not driver.activate():
             raise RuntimeError("传感器进入 ACTIVE 状态失败")

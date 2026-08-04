@@ -30,10 +30,14 @@ python -m venv .venv
 .\.venv\Scripts\python.exe .\read_bota.py
 ```
 
-按 `Ctrl+C` 停止。将当前无载荷状态清零后读取：
+每次程序成功连接传感器后，都会在开始采集前自动执行 tare，将当时的六维力/力矩设为零。启动程序时，请勿触碰传感器，并让它保持在希望作为零点的安装姿态和载荷状态。
+
+Gen 0 EtherCAT 接口不支持硬件 tare，BOTA 驱动会改用软件零偏。因此每次重新运行程序都会重新清零，零偏不会写入传感器固件。
+
+按 `Ctrl+C` 停止。只有在需要保留原始偏置时才跳过自动清零：
 
 ```powershell
-.\.venv\Scripts\python.exe .\read_bota.py --tare
+.\.venv\Scripts\python.exe .\read_bota.py --no-tare
 ```
 
 运行 30 秒并保存 CSV：
